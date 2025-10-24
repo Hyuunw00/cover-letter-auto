@@ -387,7 +387,39 @@ CHATGPT_PASSWORD=your-chatgpt-password
 
 ---
 
-## 6. 예외 처리
+## 6. 설치 및 실행 가이드
+
+### 6.1 설치
+
+```bash
+# 1. 가상환경 활성화
+source venv/bin/activate
+
+# 2. 패키지가 설치되어 있지 않다면
+pip install -r requirements.txt
+playwright install chromium
+```
+
+### 6.2 환경변수 설정
+
+`.env` 파일에 계정 정보 입력
+
+```
+JASOSEOL_EMAIL=your-email@example.com
+JASOSEOL_PASSWORD=your-password
+CHATGPT_EMAIL=your-chatgpt-email@example.com
+CHATGPT_PASSWORD=your-chatgpt-password
+```
+
+### 6.3 실행
+
+```bash
+python src/main.py
+```
+
+---
+
+## 7. 예외 처리
 
 ### 6.1 예외 상황 및 대응
 

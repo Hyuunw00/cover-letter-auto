@@ -1,0 +1,7 @@
+# 웹 자동화
+playwright>=1.48.0
+playwright-stealth
+
+# 설정 관리
+pyyaml
+python-dotenv
