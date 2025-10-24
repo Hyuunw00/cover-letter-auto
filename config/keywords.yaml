@@ -1,0 +1,60 @@
+# 직무 키워드 설정
+# 우선순위가 높을수록 먼저 매칭됩니다
+
+# 경력 타입 필터링
+career_types:
+  - 신입
+  - 신입/경력
+
+# 키워드 우선순위
+keywords:
+  # 1순위 - 프론트엔드
+  priority_1:
+    - Frontend
+    - Front-end
+    - FE
+    - 프론트엔드
+    - 프론트
+
+  # 2순위 - IT/개발/백엔드
+  priority_2:
+    - IT
+    - 개발
+    - Backend
+    - Back-end
+    - BE
+    - 백엔드
+    - SW
+    - 소프트웨어
+
+  # 3순위 - 기타 기술 스택
+  priority_3:
+    # React 관련
+    - React
+    - 리액트
+    - ReactJS
+
+    # Vue 관련
+    - Vue
+    - 뷰
+    - VueJS
+
+    # JavaScript 관련
+    - JavaScript
+    - 자바스크립트
+    - JS
+    - TypeScript
+    - 타입스크립트
+    - TS
+
+    # 웹 개발 관련
+    - Web
+    - 웹개발
+    - 웹
+
+    # 전산 관련
+    - 전산
+
+    # 앱 개발 관련
+    - App
+    - 앱
