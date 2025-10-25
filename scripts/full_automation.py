@@ -190,6 +190,27 @@ async def full_automation(job_id):
         else:
             print("✓ 로그인 확인됨")
 
+        # 회사명과 공고명 추출
+        print("\n[1-1단계] 회사명/공고명 추출")
+
+        # 페이지 제목에서 추출: "네이버파이낸셜(네이버페이) 채용공고 2025 네이버페이 신입채용..."
+        page_title = await page.title()
+
+        # 회사명: "채용공고" 앞부분
+        company_name = ""
+        if "채용공고" in page_title:
+            company_name = page_title.split("채용공고")[0].strip()
+
+        # 공고명: h1 태그
+        job_title = ""
+        h1_element = await page.query_selector("h1")
+        if h1_element:
+            job_title = await h1_element.inner_text()
+            job_title = job_title.strip()
+
+        print(f"  회사명: {company_name}")
+        print(f"  공고명: {job_title}")
+
         # 스크롤
         await page.evaluate("window.scrollTo(0, document.body.scrollHeight / 2)")
         await asyncio.sleep(2)
@@ -304,6 +325,8 @@ async def full_automation(job_id):
 
             job_data = {
                 "job_id": job_id,
+                "company_name": company_name,
+                "job_title": job_title,
                 "position": top_position['position_name'],
                 "career_type": top_position['career_type'],
                 "questions": questions
