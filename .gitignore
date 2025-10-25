@@ -15,7 +15,9 @@ logs/*.log
 # 출력
 output/*.json
 output/*.html
+output/*.log
 output/browser_profile/
+output/chatgpt_profile/
 
 # IDE
 .vscode/
