@@ -5,3 +5,6 @@ playwright-stealth
 # 설정 관리
 pyyaml
 python-dotenv
+
+# 알림 시스템
+requests>=2.25.0

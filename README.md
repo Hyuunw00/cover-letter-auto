@@ -15,11 +15,13 @@
 ## 개요
 
 ### 목적
+
 - 자소설 사이트의 채용 공고를 자동으로 확인하고 자기소개서 작성
 - ChatGPT '테오 입사지원' 프로젝트를 활용한 고품질 답변 생성
 - 매일 반복되는 작업을 완전 자동화하여 시간 절약
 
 ### 핵심 가치
+
 - **완전 자동화**: 공고 확인부터 저장까지 사람 개입 없이 실행
 - **품질 유지**: ChatGPT Projects에 저장된 개인 정보 활용
 - **시간 절약**: 매일 2-3시간 소요 작업을 자동화
@@ -27,16 +29,19 @@
 ## 주요 기능
 
 ### 1. 일일 자동화 (`daily_automation.py`)
+
 - **캘린더 기반 공고 수집**: 당일 날짜의 공고만 자동 추출
 - **즐겨찾기 필터링**: 이미 처리한 공고는 자동 제외
 - **키워드 매칭**: 설정한 직무 키워드와 일치하는 공고만 처리
 - **자동 종료**: 모든 작업 완료 후 브라우저 자동 종료
 
 ### 2. 단일 공고 처리 (`complete_automation.py`)
+
 - 특정 공고 ID를 지정하여 테스트 가능
 - 디버깅 및 검증용
 
 ### 3. 자동 프로세스
+
 ```
 1. 캘린더에서 당일 공고 확인
 2. 즐겨찾기 안 된 공고 필터링
@@ -50,6 +55,7 @@
 ## 시스템 구조
 
 ### 디렉토리 구조
+
 ```
 jasoseol-auto/
 ├── config/
@@ -68,6 +74,7 @@ jasoseol-auto/
 ```
 
 ### 기술 스택
+
 - **언어**: Python 3.10+
 - **웹 자동화**: Playwright (persistent context)
 - **AI**: ChatGPT Web (chat.openai.com)
@@ -76,6 +83,7 @@ jasoseol-auto/
 ## 설치 및 설정
 
 ### 1. 가상환경 및 패키지 설치
+
 ```bash
 # 가상환경 활성화
 source venv/bin/activate
@@ -85,7 +93,42 @@ pip install -r requirements.txt
 playwright install chromium
 ```
 
-### 2. 초기 로그인 (최초 1회만)
+### 2. 알림 시스템 설정 (선택사항)
+
+작업 완료 후 Slack 또는 이메일로 결과를 받을 수 있습니다.
+
+#### Slack 설정
+
+1. Slack 워크스페이스에서 Apps > Incoming Webhooks 검색
+2. 채널 선택 후 웹훅 URL 복사
+3. `.env` 파일에 추가:
+
+```bash
+SLACK_WEBHOOK_URL=https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK
+```
+
+#### 이메일 설정 (Gmail 예시)
+
+1. Google 계정 > 보안 > 2단계 인증 활성화
+2. 앱 비밀번호 생성 (16자리)
+3. `.env` 파일에 추가:
+
+```bash
+EMAIL_SMTP_SERVER=smtp.gmail.com
+EMAIL_SMTP_PORT=587
+EMAIL_USERNAME=your-email@gmail.com
+EMAIL_PASSWORD=your-app-password
+EMAIL_TO=recipient@example.com
+```
+
+#### 알림 테스트
+
+```bash
+# 알림 시스템 테스트
+python test_notifications.py
+```
+
+### 3. 초기 로그인 (최초 1회만)
 
 자소설과 ChatGPT에 수동 로그인하여 세션 정보 저장:
 
@@ -97,7 +140,7 @@ python -c "from playwright.sync_api import sync_playwright; p = sync_playwright(
 python -c "from playwright.sync_api import sync_playwright; p = sync_playwright().start(); browser = p.chromium.launch_persistent_context('output/chatgpt_profile', headless=False); browser.pages[0].goto('https://chatgpt.com'); input('로그인 후 엔터...')"
 ```
 
-### 3. 키워드 설정
+### 4. 키워드 설정
 
 `config/keywords.yaml` 파일에서 원하는 직무 키워드 설정:
 
@@ -122,6 +165,7 @@ keywords:
 ## 사용 방법
 
 ### 수동 실행
+
 ```bash
 # 일일 자동화 실행
 source venv/bin/activate
@@ -132,6 +176,7 @@ tail -f output/daily_automation.log
 ```
 
 ### 특정 공고 테스트
+
 ```bash
 # 공고 ID를 지정하여 테스트
 python scripts/complete_automation.py
@@ -144,6 +189,7 @@ python scripts/complete_automation.py
 스케줄 작업이 이미 등록되어 있습니다 (매일 오후 2시 실행).
 
 #### 스케줄 관리 명령어
+
 ```bash
 # 스케줄 상태 확인
 launchctl list | grep jasoseol
@@ -156,6 +202,7 @@ launchctl load ~/Library/LaunchAgents/com.jasoseol.daily.plist
 ```
 
 ### 필수 조건 (자동 실행 시)
+
 1. **노트북 전원 연결**: 항상 전원에 연결되어 있어야 함
 2. **슬립 방지**: 컴퓨터가 슬립 모드로 들어가지 않도록 설정
    ```bash
@@ -169,13 +216,17 @@ launchctl load ~/Library/LaunchAgents/com.jasoseol.daily.plist
 ## 설정 파일
 
 ### keywords.yaml
+
 직무 키워드 및 경력 타입 설정:
+
 - `career_types`: 지원 가능한 경력 타입
 - `keywords.priority_1`: 우선순위 높은 키워드
 - `keywords.priority_2`: 일반 키워드
 
 ### prompts.yaml
+
 ChatGPT 프롬프트 템플릿:
+
 - `company_research`: 회사/직무 정보 조사 프롬프트
 - `writing_rules`: 자기소개서 작성 규칙
 - `question`: 문항별 질문 프롬프트
@@ -183,10 +234,12 @@ ChatGPT 프롬프트 템플릿:
 ## 로그 및 출력
 
 ### 로그 파일
+
 - `output/daily_automation.log`: 실행 로그 (실시간 기록)
 - `output/launchd.log`: 스케줄 실행 로그
 
 ### JSON 출력
+
 - `output/questions_{공고ID}.json`: 각 공고별 질문 및 답변 저장
 
 ```json
@@ -211,19 +264,23 @@ ChatGPT 프롬프트 템플릿:
 ### 자주 발생하는 문제
 
 **Q: 스케줄이 실행되지 않아요**
+
 - 노트북이 슬립 모드인지 확인
 - `launchctl list | grep jasoseol`로 등록 여부 확인
 - `output/launchd.log`에서 오류 확인
 
 **Q: 로그인이 필요하다고 나와요**
+
 - 세션이 만료되었을 수 있음
 - 수동으로 다시 로그인 (위 "초기 로그인" 참고)
 
 **Q: 키워드 매칭이 안 돼요**
+
 - `config/keywords.yaml` 파일 확인
 - 대소문자 구분 없이 매칭되므로 키워드 추가
 
 **Q: ChatGPT 답변이 생성되지 않아요**
+
 - '테오 입사지원' 프로젝트가 있는지 확인
 - ChatGPT 세션 다시 로그인
 

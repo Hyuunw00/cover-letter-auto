@@ -15,6 +15,10 @@ from pathlib import Path
 from playwright.async_api import async_playwright
 from dotenv import load_dotenv
 
+# 알림 시스템 import
+sys.path.append(str(Path(__file__).parent.parent))
+from src.utils.notifications import NotificationManager
+
 # .env 로드
 load_dotenv()
 
@@ -326,237 +330,260 @@ async def process_single_job(job_id, jasoseol_context, chatgpt_page):
     print("=" * 80)
 
     jasoseol_page = jasoseol_context.pages[0] if jasoseol_context.pages else await jasoseol_context.new_page()
+    
+    # 결과 추적을 위한 변수들
+    job_result = {
+        'job_id': job_id,
+        'success': False,
+        'company_name': '',
+        'job_title': '',
+        'error': None
+    }
 
-    # === 1단계: 자소설에서 정보 추출 ===
-    print("\n[1단계] 자소설 - 정보 추출")
+    try:
+        # === 1단계: 자소설에서 정보 추출 ===
+        print("\n[1단계] 자소설 - 정보 추출")
 
-    # 공고 페이지 접근
-    await jasoseol_page.goto(f"https://jasoseol.com/recruit/{job_id}")
-    await jasoseol_page.wait_for_load_state("networkidle")
-    await asyncio.sleep(3)
+        # 공고 페이지 접근
+        await jasoseol_page.goto(f"https://jasoseol.com/recruit/{job_id}")
+        await jasoseol_page.wait_for_load_state("networkidle")
+        await asyncio.sleep(3)
 
-    # 회사명/공고명 추출
-    page_title = await jasoseol_page.title()
-    company_name = page_title.split("채용공고")[0].strip() if "채용공고" in page_title else ""
+        # 회사명/공고명 추출
+        page_title = await jasoseol_page.title()
+        company_name = page_title.split("채용공고")[0].strip() if "채용공고" in page_title else ""
 
-    h1_element = await jasoseol_page.query_selector("h1")
-    job_title = await h1_element.inner_text() if h1_element else ""
+        h1_element = await jasoseol_page.query_selector("h1")
+        job_title = await h1_element.inner_text() if h1_element else ""
 
-    print(f"  회사명: {company_name}")
-    print(f"  공고명: {job_title}")
+        # 결과에 정보 저장
+        job_result['company_name'] = company_name
+        job_result['job_title'] = job_title
 
-    # 키워드 매칭
-    await jasoseol_page.evaluate("window.scrollTo(0, document.body.scrollHeight / 2)")
-    await asyncio.sleep(2)
+        print(f"  회사명: {company_name}")
+        print(f"  공고명: {job_title}")
 
-    matched = await find_matching_positions(jasoseol_page)
-    if not matched:
-        print("  ❌ 매칭된 직무 없음 - 건너뛰기")
-        return False
-
-    top_position = matched[0]
-    print(f"  직무: {top_position['position_name']}")
-
-    # 자기소개서 쓰기 버튼 클릭
-    write_buttons = await jasoseol_page.query_selector_all("button:has-text('자기소개서 쓰기')")
-    if write_buttons:
-        async with jasoseol_context.expect_page() as new_page_info:
-            await write_buttons[0].click()
-
-        new_page = await new_page_info.value
-        await new_page.wait_for_load_state("networkidle")
-        jasoseol_page = new_page
+        # 키워드 매칭
+        await jasoseol_page.evaluate("window.scrollTo(0, document.body.scrollHeight / 2)")
         await asyncio.sleep(2)
 
-        # 모달 처리 - "예" 버튼 클릭
+        matched = await find_matching_positions(jasoseol_page)
+        if not matched:
+            print("  ❌ 매칭된 직무 없음 - 건너뛰기")
+            job_result['error'] = "키워드 매칭 실패"
+            return job_result
+
+        top_position = matched[0]
+        print(f"  직무: {top_position['position_name']}")
+
+        # 자기소개서 쓰기 버튼 클릭
+        write_buttons = await jasoseol_page.query_selector_all("button:has-text('자기소개서 쓰기')")
+        if write_buttons:
+            async with jasoseol_context.expect_page() as new_page_info:
+                await write_buttons[0].click()
+
+            new_page = await new_page_info.value
+            await new_page.wait_for_load_state("networkidle")
+            jasoseol_page = new_page
+            await asyncio.sleep(2)
+
+            # 모달 처리 - "예" 버튼 클릭
+            try:
+                yes_button = await jasoseol_page.wait_for_selector(
+                    "div.modal-footer button.btn-primary:has-text('예')",
+                    timeout=5000
+                )
+                if yes_button:
+                    await yes_button.click()
+                    await asyncio.sleep(1)
+                    print("  ✓ 팝업창 '예' 클릭")
+            except:
+                pass
+
+        # 질문 추출
+        questions = await extract_questions_from_jasoseol(jasoseol_page)
+        print(f"  ✓ {len(questions)}개 질문 추출")
+
+        # JSON 저장
+        output_dir = Path("output")
+        job_data = {
+            "job_id": job_id,
+            "company_name": company_name,
+            "job_title": job_title,
+            "position": top_position['position_name'],
+            "career_type": top_position['career_type'],
+            "questions": questions
+        }
+
+        json_path = output_dir / f"questions_{job_id}.json"
+        with open(json_path, 'w', encoding='utf-8') as f:
+            json.dump(job_data, f, ensure_ascii=False, indent=2)
+
+        print(f"  ✓ 데이터 저장: {json_path}")
+
+        # === 2단계: ChatGPT에서 답변 생성 ===
+        print("\n[2단계] ChatGPT - 답변 생성")
+
+        # 프롬프트 로드
+        prompts = load_prompts()
+
+        # 프롬프트 1: 회사/직무 정보 조사
+        prompt1 = prompts['company_research'].format(
+            company_name=company_name,
+            job_title=job_title,
+            position=top_position['position_name']
+        )
+        print("\n  [프롬프트 1] 회사/직무 정보 조사")
+        await send_chatgpt_message(chatgpt_page, prompt1)
+        print("  ✓ 응답 받음")
+
+        # 프롬프트 2: 작성 규칙
+        prompt2 = prompts['writing_rules'].format(
+            company_name=company_name,
+            position=top_position['position_name']
+        )
+        print("\n  [프롬프트 2] 작성 규칙")
+        await send_chatgpt_message(chatgpt_page, prompt2)
+        print("  ✓ 응답 받음")
+
+        # 각 문항 질문 전송
+        for q in questions:
+            prompt_q = prompts['question_template'].format(
+                number=q['number'],
+                question=q['text'],
+                char_limit=q['char_limit']
+            )
+            print(f"\n  [문항 {q['number']}] 질문 전송")
+            answer = await send_chatgpt_message(chatgpt_page, prompt_q)
+
+            # 답변 저장
+            q['answer'] = answer if answer else "응답 없음"
+            print(f"  ✓ 답변 받음 ({len(answer) if answer else 0}자)")
+
+        # 업데이트된 JSON 저장
+        with open(json_path, 'w', encoding='utf-8') as f:
+            json.dump(job_data, f, ensure_ascii=False, indent=2)
+
+        print(f"\n  ✓ 답변이 포함된 데이터 저장: {json_path}")
+
+        # === 3단계: 자소설에 답변 입력 ===
+        print("\n[3단계] 자소설 - 답변 입력")
+
+        # 자소설 페이지로 전환 (이미 열려있음)
+        await jasoseol_page.bring_to_front()
+        await asyncio.sleep(1)
+
+        # 팝업창이 뜨면 "예" 버튼 클릭
         try:
             yes_button = await jasoseol_page.wait_for_selector(
                 "div.modal-footer button.btn-primary:has-text('예')",
-                timeout=5000
+                timeout=3000
             )
             if yes_button:
                 await yes_button.click()
                 await asyncio.sleep(1)
                 print("  ✓ 팝업창 '예' 클릭")
         except:
+            # 팝업이 없으면 무시
             pass
 
-    # 질문 추출
-    questions = await extract_questions_from_jasoseol(jasoseol_page)
-    print(f"  ✓ {len(questions)}개 질문 추출")
+        # 각 질문 탭 클릭하고 답변 입력
+        for q in questions:
+            question_num = q['number']
+            answer = q.get('answer', '')
 
-    # JSON 저장
-    output_dir = Path("output")
-    job_data = {
-        "job_id": job_id,
-        "company_name": company_name,
-        "job_title": job_title,
-        "position": top_position['position_name'],
-        "career_type": top_position['career_type'],
-        "questions": questions
-    }
+            if not answer or answer == "응답 없음":
+                print(f"  [문항 {question_num}] 답변 없음 - 건너뛰기")
+                continue
 
-    json_path = output_dir / f"questions_{job_id}.json"
-    with open(json_path, 'w', encoding='utf-8') as f:
-        json.dump(job_data, f, ensure_ascii=False, indent=2)
+            print(f"  [문항 {question_num}] 답변 입력 중...")
 
-    print(f"  ✓ 데이터 저장: {json_path}")
+            # 해당 번호의 탭 버튼 클릭
+            nav_buttons = await jasoseol_page.query_selector_all("ul.nav-pills li")
+            for btn in nav_buttons:
+                text = await btn.inner_text()
+                if text.strip() == str(question_num):
+                    await btn.click()
+                    await asyncio.sleep(1)
+                    break
 
-    # === 2단계: ChatGPT에서 답변 생성 ===
-    print("\n[2단계] ChatGPT - 답변 생성")
+            # 활성화된 탭의 답변 textarea 찾기
+            active_tab = await jasoseol_page.query_selector(".tab-pane.active")
+            if not active_tab:
+                print(f"  ⚠️ 활성화된 탭을 찾을 수 없음")
+                continue
 
-    # 프롬프트 로드
-    prompts = load_prompts()
+            answer_textarea = await active_tab.query_selector("textarea.answer")
+            if not answer_textarea:
+                print(f"  ⚠️ 답변 입력창을 찾을 수 없음")
+                continue
 
-    # 프롬프트 1: 회사/직무 정보 조사
-    prompt1 = prompts['company_research'].format(
-        company_name=company_name,
-        job_title=job_title,
-        position=top_position['position_name']
-    )
-    print("\n  [프롬프트 1] 회사/직무 정보 조사")
-    await send_chatgpt_message(chatgpt_page, prompt1)
-    print("  ✓ 응답 받음")
+            # AngularJS를 위한 입력 (JavaScript로 직접 값 설정 + 이벤트 트리거)
+            await answer_textarea.click()
+            await asyncio.sleep(0.3)
 
-    # 프롬프트 2: 작성 규칙
-    prompt2 = prompts['writing_rules'].format(
-        company_name=company_name,
-        position=top_position['position_name']
-    )
-    print("\n  [프롬프트 2] 작성 규칙")
-    await send_chatgpt_message(chatgpt_page, prompt2)
-    print("  ✓ 응답 받음")
-
-    # 각 문항 질문 전송
-    for q in questions:
-        prompt_q = prompts['question_template'].format(
-            number=q['number'],
-            question=q['text'],
-            char_limit=q['char_limit']
-        )
-        print(f"\n  [문항 {q['number']}] 질문 전송")
-        answer = await send_chatgpt_message(chatgpt_page, prompt_q)
-
-        # 답변 저장
-        q['answer'] = answer if answer else "응답 없음"
-        print(f"  ✓ 답변 받음 ({len(answer) if answer else 0}자)")
-
-    # 업데이트된 JSON 저장
-    with open(json_path, 'w', encoding='utf-8') as f:
-        json.dump(job_data, f, ensure_ascii=False, indent=2)
-
-    print(f"\n  ✓ 답변이 포함된 데이터 저장: {json_path}")
-
-    # === 3단계: 자소설에 답변 입력 ===
-    print("\n[3단계] 자소설 - 답변 입력")
-
-    # 자소설 페이지로 전환 (이미 열려있음)
-    await jasoseol_page.bring_to_front()
-    await asyncio.sleep(1)
-
-    # 팝업창이 뜨면 "예" 버튼 클릭
-    try:
-        yes_button = await jasoseol_page.wait_for_selector(
-            "div.modal-footer button.btn-primary:has-text('예')",
-            timeout=3000
-        )
-        if yes_button:
-            await yes_button.click()
-            await asyncio.sleep(1)
-            print("  ✓ 팝업창 '예' 클릭")
-    except:
-        # 팝업이 없으면 무시
-        pass
-
-    # 각 질문 탭 클릭하고 답변 입력
-    for q in questions:
-        question_num = q['number']
-        answer = q.get('answer', '')
-
-        if not answer or answer == "응답 없음":
-            print(f"  [문항 {question_num}] 답변 없음 - 건너뛰기")
-            continue
-
-        print(f"  [문항 {question_num}] 답변 입력 중...")
-
-        # 해당 번호의 탭 버튼 클릭
-        nav_buttons = await jasoseol_page.query_selector_all("ul.nav-pills li")
-        for btn in nav_buttons:
-            text = await btn.inner_text()
-            if text.strip() == str(question_num):
-                await btn.click()
-                await asyncio.sleep(1)
-                break
-
-        # 활성화된 탭의 답변 textarea 찾기
-        active_tab = await jasoseol_page.query_selector(".tab-pane.active")
-        if not active_tab:
-            print(f"  ⚠️ 활성화된 탭을 찾을 수 없음")
-            continue
-
-        answer_textarea = await active_tab.query_selector("textarea.answer")
-        if not answer_textarea:
-            print(f"  ⚠️ 답변 입력창을 찾을 수 없음")
-            continue
-
-        # AngularJS를 위한 입력 (JavaScript로 직접 값 설정 + 이벤트 트리거)
-        await answer_textarea.click()
-        await asyncio.sleep(0.3)
-
-        # JavaScript로 값 설정하고 AngularJS 이벤트 트리거
-        await jasoseol_page.evaluate("""
-            (answer) => {
-                const textarea = document.querySelector('.tab-pane.active textarea.answer');
-                if (textarea) {
-                    textarea.value = answer;
-                    // AngularJS의 change 감지를 위해 input 이벤트 트리거
-                    textarea.dispatchEvent(new Event('input', { bubbles: true }));
-                    textarea.dispatchEvent(new Event('change', { bubbles: true }));
-                    // AngularJS scope apply
-                    const scope = angular.element(textarea).scope();
-                    if (scope) {
-                        scope.$apply();
+            # JavaScript로 값 설정하고 AngularJS 이벤트 트리거
+            await jasoseol_page.evaluate("""
+                (answer) => {
+                    const textarea = document.querySelector('.tab-pane.active textarea.answer');
+                    if (textarea) {
+                        textarea.value = answer;
+                        // AngularJS의 change 감지를 위해 input 이벤트 트리거
+                        textarea.dispatchEvent(new Event('input', { bubbles: true }));
+                        textarea.dispatchEvent(new Event('change', { bubbles: true }));
+                        // AngularJS scope apply
+                        const scope = angular.element(textarea).scope();
+                        if (scope) {
+                            scope.$apply();
+                        }
                     }
                 }
-            }
-        """, answer)
+            """, answer)
 
-        await asyncio.sleep(0.5)
-        print(f"    ✓ 입력 완료 ({len(answer)}자)")
+            await asyncio.sleep(0.5)
+            print(f"    ✓ 입력 완료 ({len(answer)}자)")
 
-    print("  ✓ 모든 답변 입력 완료")
+        print("  ✓ 모든 답변 입력 완료")
 
-    # === 4단계: 저장 및 즐겨찾기 ===
-    print("\n[4단계] 저장 및 즐겨찾기")
+        # === 4단계: 저장 및 즐겨찾기 ===
+        print("\n[4단계] 저장 및 즐겨찾기")
 
-    # 저장 버튼 클릭 (자기소개서 페이지)
-    save_button = await jasoseol_page.query_selector("div.btn-save")
-    if save_button:
-        await save_button.click()
-        await asyncio.sleep(2)
-        print("  ✓ 저장 완료")
-    else:
-        print("  ⚠️ 저장 버튼을 찾을 수 없음")
+        # 저장 버튼 클릭 (자기소개서 페이지)
+        save_button = await jasoseol_page.query_selector("div.btn-save")
+        if save_button:
+            await save_button.click()
+            await asyncio.sleep(2)
+            print("  ✓ 저장 완료")
+        else:
+            print("  ⚠️ 저장 버튼을 찾을 수 없음")
 
-    # 공고 페이지로 이동 (즐겨찾기는 공고 페이지에 있음)
-    await jasoseol_page.goto(f"https://jasoseol.com/recruit/{job_id}")
-    await jasoseol_page.wait_for_load_state("networkidle")
-    await asyncio.sleep(3)
+        # 공고 페이지로 이동 (즐겨찾기는 공고 페이지에 있음)
+        await jasoseol_page.goto(f"https://jasoseol.com/recruit/{job_id}")
+        await jasoseol_page.wait_for_load_state("networkidle")
+        await asyncio.sleep(3)
 
-    # 즐겨찾기 버튼 클릭
-    bookmark_button = await jasoseol_page.query_selector("button:has-text('공고 즐겨찾기')")
-    if bookmark_button:
-        await bookmark_button.click()
-        await asyncio.sleep(1)
-        print("  ✓ 공고 즐겨찾기 완료")
-    else:
-        print("  ⚠️ 즐겨찾기 버튼을 찾을 수 없음")
+        # 즐겨찾기 버튼 클릭
+        bookmark_button = await jasoseol_page.query_selector("button:has-text('공고 즐겨찾기')")
+        if bookmark_button:
+            await bookmark_button.click()
+            await asyncio.sleep(1)
+            print("  ✓ 공고 즐겨찾기 완료")
+        else:
+            print("  ⚠️ 즐겨찾기 버튼을 찾을 수 없음")
 
-    print("\n" + "=" * 80)
-    print(f"공고 처리 완료: {job_id}")
-    print("=" * 80)
+        # 성공으로 표시
+        job_result['success'] = True
 
-    return True
+        print("\n" + "=" * 80)
+        print(f"공고 처리 완료: {job_id}")
+        print("=" * 80)
+
+    except Exception as e:
+        print(f"\n❌ 공고 처리 중 오류 발생: {e}")
+        job_result['error'] = str(e)
+        job_result['success'] = False
+
+    return job_result
 
 
 async def main():
@@ -628,8 +655,7 @@ async def main():
             return
 
         # === 각 공고 처리 ===
-        processed_count = 0
-        failed_count = 0
+        job_results = []
 
         for idx, job in enumerate(jobs, 1):
             print(f"\n{'=' * 80}")
@@ -637,29 +663,46 @@ async def main():
             print(f"{'=' * 80}")
 
             try:
-                success = await process_single_job(
+                result = await process_single_job(
                     job['employment_id'],
                     jasoseol_context,
                     chatgpt_page
                 )
-
-                if success:
-                    processed_count += 1
-                else:
-                    failed_count += 1
+                job_results.append(result)
 
             except Exception as e:
                 print(f"\n❌ 공고 처리 중 오류 발생: {e}")
-                failed_count += 1
+                # 오류 발생 시에도 결과에 추가
+                job_results.append({
+                    'job_id': job['employment_id'],
+                    'success': False,
+                    'company_name': '알 수 없음',
+                    'job_title': '알 수 없음',
+                    'error': str(e)
+                })
                 continue
 
-        # === 최종 결과 ===
+        # === 최종 결과 및 알림 ===
         print("\n" + "=" * 80)
         print("일일 자동화 완료")
         print("=" * 80)
+        
+        successful_jobs = sum(1 for result in job_results if result.get('success', False))
+        failed_jobs = len(job_results) - successful_jobs
+        
         print(f"총 공고 수: {len(jobs)}")
-        print(f"처리 성공: {processed_count}")
-        print(f"처리 실패: {failed_count}")
+        print(f"처리 성공: {successful_jobs}")
+        print(f"처리 실패: {failed_jobs}")
+
+        # 알림 전송
+        print("\n📧 작업 완료 알림 전송 중...")
+        notifier = NotificationManager()
+        notification_sent = notifier.send_job_completion_notification(job_results)
+        
+        if notification_sent:
+            print("✓ 알림 전송 완료")
+        else:
+            print("⚠️ 알림 전송 실패 (설정 확인 필요)")
 
         # 브라우저 종료
         print("\n브라우저를 종료합니다...")
