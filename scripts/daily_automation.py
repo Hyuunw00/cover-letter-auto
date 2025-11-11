@@ -54,49 +54,85 @@ def load_prompts():
 
 
 async def get_today_job_list(page):
-    """당일 날짜의 즐겨찾기 안된 공고 목록 가져오기"""
-    # 오늘 날짜 (YYYYMMDD 형식)
-    today = datetime.now().strftime("%Y%m%d")
-    print(f"  당일 날짜: {today}")
+    """당일+익일 날짜의 즐겨찾기 안된 공고 목록 가져오기"""
+    from datetime import timedelta
 
-    # 해당 날짜의 day-content 찾기
-    day_selector = f'div.day-content[day="{today}"]'
-    day_content = await page.query_selector(day_selector)
+    # 오늘과 내일 날짜 (YYYYMMDD 형식)
+    today = datetime.now()
+    tomorrow = today + timedelta(days=1)
 
-    if not day_content:
-        print(f"  ⚠️ {today} 날짜에 공고가 없습니다")
-        return []
+    date_list = [
+        today.strftime("%Y%m%d"),
+        tomorrow.strftime("%Y%m%d")
+    ]
 
-    # 해당 날짜의 모든 공고 아이템 찾기
-    job_items = await day_content.query_selector_all('.calendar-item.employment')
-
-    if not job_items:
-        print(f"  ⚠️ {today} 날짜에 공고가 없습니다")
-        return []
+    print(f"  처리 대상 날짜: {date_list[0]} (오늘), {date_list[1]} (내일)")
 
     jobs = []
-    for item in job_items:
-        # 클래스 목록 가져오기
-        class_name = await item.get_attribute('class')
 
-        # 즐겨찾기 확인 (no-favorite 클래스가 있으면 즐겨찾기 안됨)
-        if 'no-favorite' not in class_name:
-            continue  # 이미 즐겨찾기된 공고는 건너뛰기
+    for target_date in date_list:
+        # 해당 날짜의 day-content 찾기
+        day_selector = f'div.day-content[day="{target_date}"]'
+        day_content = await page.query_selector(day_selector)
 
-        # 단일 공고인지 그룹 공고인지 확인
-        if 'single_employment' in class_name:
-            # 단일 공고 - employment_id로 바로 접근 가능
-            employment_id = await item.get_attribute('employment_id')
-            if employment_id:
-                jobs.append({
-                    'type': 'single',
-                    'employment_id': employment_id,
-                    'date': today
-                })
-        elif 'grouped_employment' in class_name:
-            # 그룹 공고 - 클릭해서 목록 봐야함 (일단 스킵)
-            print(f"  ⚠️ 그룹 공고는 현재 지원하지 않습니다 (추후 구현 예정)")
+        if not day_content:
+            print(f"  ⚠️ {target_date} 날짜에 공고가 없습니다")
             continue
+
+        # 해당 날짜의 모든 공고 아이템 찾기
+        job_items = await day_content.query_selector_all('.calendar-item.employment')
+
+        if not job_items:
+            print(f"  ⚠️ {target_date} 날짜에 공고가 없습니다")
+            continue
+
+        for item in job_items:
+            # 클래스 목록 가져오기
+            class_name = await item.get_attribute('class')
+
+            # 즐겨찾기 확인 (no-favorite 클래스가 있으면 즐겨찾기 안됨)
+            if 'no-favorite' not in class_name:
+                continue  # 이미 즐겨찾기된 공고는 건너뛰기
+
+            # 단일 공고인지 그룹 공고인지 확인
+            if 'single_employment' in class_name:
+                # 단일 공고 - employment_id로 바로 접근 가능
+                employment_id = await item.get_attribute('employment_id')
+                if employment_id:
+                    jobs.append({
+                        'type': 'single',
+                        'employment_id': employment_id,
+                        'date': target_date
+                    })
+            elif 'grouped_employment' in class_name:
+                # 그룹 공고 - 클릭해서 모달에서 리스트 확인
+                print(f"  [디버그] 그룹 공고 발견, 모달 열기 시도")
+                await item.click()
+                await asyncio.sleep(2)
+
+                # 모달에서 각 공고 아이템 찾기
+                group_items = await page.query_selector_all('div.employment-group-item')
+                print(f"  [디버그] 그룹 내 {len(group_items)}개 공고 발견")
+
+                for group_item in group_items:
+                    # 각 공고의 employment_id 추출
+                    emp_id = await group_item.get_attribute('employment_id')
+
+                    # 즐겨찾기 여부 확인
+                    favorite_img = await group_item.query_selector('img.item-favorite:not(.deactivated)')
+
+                    # 즐겨찾기 안 된 공고만 추가
+                    if emp_id and not favorite_img:
+                        jobs.append({
+                            'type': 'group',
+                            'employment_id': emp_id,
+                            'date': target_date
+                        })
+                        print(f"  [디버그] 그룹 공고 추가: {emp_id}")
+
+                # 모달 닫기 (ESC 키 또는 배경 클릭)
+                await page.keyboard.press('Escape')
+                await asyncio.sleep(1)
 
     return jobs
 
@@ -211,17 +247,46 @@ async def find_teo_project(page):
     print("\n['테오 입사지원' 프로젝트 찾기]")
 
     try:
+        # 페이지 로드 대기
+        await asyncio.sleep(3)
+
+        # 첫 번째 시도: 보이는 프로젝트에서 찾기
         project_links = await page.query_selector_all("a[href^='/g/']")
+        print(f"  [디버그] 발견된 프로젝트 링크 개수: {len(project_links)}")
 
         for link in project_links:
             text = await link.inner_text()
+            print(f"  [디버그] 프로젝트: {text.strip()}")
             if "테오 입사지원" in text:
                 await link.click()
                 await asyncio.sleep(3)
                 print(f"  ✓ 프로젝트 발견: {text.strip()}")
                 return True
 
+        # 못 찾았으면 "더 보기" 버튼 클릭
+        print("  [디버그] '테오 입사지원'을 찾지 못함, '더 보기' 버튼 찾는 중...")
+        more_button = await page.query_selector("div.__menu-item:has-text('더 보기')")
+
+        if more_button:
+            print("  [디버그] '더 보기' 버튼 클릭")
+            await more_button.click()
+            await asyncio.sleep(2)
+
+            # 다시 검색
+            project_links = await page.query_selector_all("a[href^='/g/']")
+            print(f"  [디버그] '더 보기' 후 프로젝트 링크 개수: {len(project_links)}")
+
+            for link in project_links:
+                text = await link.inner_text()
+                print(f"  [디버그] 프로젝트: {text.strip()}")
+                if "테오 입사지원" in text:
+                    await link.click()
+                    await asyncio.sleep(3)
+                    print(f"  ✓ 프로젝트 발견: {text.strip()}")
+                    return True
+
         print("  ❌ '테오 입사지원' 프로젝트를 찾을 수 없음")
+        print(f"  [힌트] ChatGPT 페이지 URL: {page.url}")
         return False
 
     except Exception as e:
@@ -229,7 +294,7 @@ async def find_teo_project(page):
         return False
 
 
-async def wait_for_response_complete(page, timeout=120):
+async def wait_for_response_complete(page, timeout=180):
     """
     ChatGPT 응답 완료 대기
     - stop-button이 사라지고 composer-speech-button이 나타나면 완료
@@ -376,8 +441,15 @@ async def process_single_job(job_id, jasoseol_context, chatgpt_page):
         top_position = matched[0]
         print(f"  직무: {top_position['position_name']}")
 
-        # 자기소개서 쓰기 버튼 클릭
-        write_buttons = await jasoseol_page.query_selector_all("button:has-text('자기소개서 쓰기')")
+        # 자기소개서 준비중인지 체크
+        preparing_element = await jasoseol_page.query_selector('td[ng-if="!employment.employment_resume"]:has-text("자기소개서 준비중")')
+        if preparing_element:
+            print("  ⚠️ 자기소개서 준비중 - 건너뛰기")
+            job_result['error'] = "자기소개서 준비중"
+            return job_result
+
+        # 자기소개서 쓰기 버튼 클릭 (div.write-resume-button 또는 기존 button 방식 둘다 지원)
+        write_buttons = await jasoseol_page.query_selector_all("div.write-resume-button:has-text('자기소개서 쓰기'), button:has-text('자기소개서 쓰기')")
         if write_buttons:
             async with jasoseol_context.expect_page() as new_page_info:
                 await write_buttons[0].click()
@@ -615,8 +687,8 @@ async def main():
 
         # === 캘린더에서 당일 공고 목록 가져오기 ===
         print("\n[캘린더 확인]")
-        await jasoseol_page.goto("https://jasoseol.com/calendar")
-        await jasoseol_page.wait_for_load_state("networkidle")
+        await jasoseol_page.goto("https://jasoseol.com/calendar", timeout=60000)
+        await jasoseol_page.wait_for_load_state("networkidle", timeout=60000)
         await asyncio.sleep(3)
 
         jobs = await get_today_job_list(jasoseol_page)

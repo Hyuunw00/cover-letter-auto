@@ -7,10 +7,13 @@
 
     <key>ProgramArguments</key>
     <array>
-        <string>/bin/bash</string>
-        <string>-c</string>
-        <string>cd /Users/hyunw00/Desktop/hyunw00/project/jasoseol-auto && source venv/bin/activate && python -u scripts/daily_automation.py >> output/cron.log 2>&1</string>
+        <string>/Users/hyunw00/Desktop/hyunw00/project/cover-lettter-auto/venv/bin/python</string>
+        <string>-u</string>
+        <string>scripts/daily_automation.py</string>
     </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/hyunw00/Desktop/hyunw00/project/cover-lettter-auto</string>
 
     <key>StartCalendarInterval</key>
     <dict>
@@ -21,10 +24,10 @@
     </dict>
 
     <key>StandardOutPath</key>
-    <string>/Users/hyunw00/Desktop/hyunw00/project/jasoseol-auto/output/launchd.log</string>
+    <string>/Users/hyunw00/Desktop/hyunw00/project/cover-lettter-auto/output/launchd.log</string>
 
     <key>StandardErrorPath</key>
-    <string>/Users/hyunw00/Desktop/hyunw00/project/jasoseol-auto/output/launchd_error.log</string>
+    <string>/Users/hyunw00/Desktop/hyunw00/project/cover-lettter-auto/output/launchd_error.log</string>
 
     <key>RunAtLoad</key>
     <false/>

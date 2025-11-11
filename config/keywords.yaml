@@ -5,14 +5,15 @@
 career_types:
   - 신입
   - 신입/경력
+  - 인턴
 
 # 키워드 우선순위
 keywords:
   # 1순위 - 프론트엔드
   priority_1:
     - Frontend
-    - Front-end
     - FE
+    - Front-end
     - 프론트엔드
     - 프론트
 

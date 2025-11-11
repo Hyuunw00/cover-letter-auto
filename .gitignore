@@ -7,7 +7,7 @@ __pycache__/
 .Python
 
 # 환경변수 (비밀정보)
-.env
+.env*
 
 # 로그
 logs/*.log
