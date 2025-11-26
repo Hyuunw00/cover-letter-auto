@@ -199,8 +199,8 @@ async def login_chatgpt(page):
 
 
 async def find_teo_project(page):
-    """'테오 입사지원' 프로젝트 찾기"""
-    print("\n['테오 입사지원' 프로젝트 찾기]")
+    """'입지' 프로젝트 찾기"""
+    print("\n['입지' 프로젝트 찾기]")
 
     await asyncio.sleep(2)
 
@@ -211,13 +211,13 @@ async def find_teo_project(page):
         await more_button.click()
         await asyncio.sleep(1)
 
-    # 모든 링크에서 '테오 입사지원' 찾기
+    # 모든 링크에서 '입지' 찾기
     links = await page.query_selector_all("a")
 
     for link in links:
         try:
             text = await link.inner_text()
-            if "테오" in text and "입사" in text:
+            if "입지" in text:
                 href = await link.get_attribute("href")
                 print(f"  ✓ 프로젝트 발견: {text.strip()}")
 
@@ -450,7 +450,7 @@ async def main():
         # ChatGPT 로그인
         await login_chatgpt(chatgpt_page)
 
-        # '테오 입사지원' 프로젝트 찾기
+        # '입지' 프로젝트 찾기
         project_found = await find_teo_project(chatgpt_page)
         if not project_found:
             print("  ❌ 프로젝트를 찾을 수 없어 종료")

@@ -243,8 +243,8 @@ async def extract_questions_from_jasoseol(page):
 
 
 async def find_teo_project(page):
-    """'테오 입사지원' 프로젝트 찾기"""
-    print("\n['테오 입사지원' 프로젝트 찾기]")
+    """'입지' 프로젝트 찾기"""
+    print("\n['입지' 프로젝트 찾기]")
 
     try:
         # 페이지 로드 대기
@@ -257,14 +257,14 @@ async def find_teo_project(page):
         for link in project_links:
             text = await link.inner_text()
             print(f"  [디버그] 프로젝트: {text.strip()}")
-            if "테오 입사지원" in text:
+            if "입지" in text:
                 await link.click()
                 await asyncio.sleep(3)
                 print(f"  ✓ 프로젝트 발견: {text.strip()}")
                 return True
 
         # 못 찾았으면 "더 보기" 버튼 클릭
-        print("  [디버그] '테오 입사지원'을 찾지 못함, '더 보기' 버튼 찾는 중...")
+        print("  [디버그] '입지'를 찾지 못함, '더 보기' 버튼 찾는 중...")
         more_button = await page.query_selector("div.__menu-item:has-text('더 보기')")
 
         if more_button:
@@ -279,13 +279,13 @@ async def find_teo_project(page):
             for link in project_links:
                 text = await link.inner_text()
                 print(f"  [디버그] 프로젝트: {text.strip()}")
-                if "테오 입사지원" in text:
+                if "입지" in text:
                     await link.click()
                     await asyncio.sleep(3)
                     print(f"  ✓ 프로젝트 발견: {text.strip()}")
                     return True
 
-        print("  ❌ '테오 입사지원' 프로젝트를 찾을 수 없음")
+        print("  ❌ '입지' 프로젝트를 찾을 수 없음")
         print(f"  [힌트] ChatGPT 페이지 URL: {page.url}")
         return False
 
