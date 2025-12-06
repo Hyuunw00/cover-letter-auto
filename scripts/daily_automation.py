@@ -138,20 +138,24 @@ async def get_today_job_list(page):
 
 
 async def find_matching_positions(page):
-    """키워드 매칭되는 직무 찾기"""
+    """키워드 매칭되는 직무 찾기 (점수 기반)"""
     config = load_keywords()
     allowed_career_types = config['career_types']
 
-    keywords_by_priority = []
+    # 우선순위별 점수 설정
+    priority_scores = {
+        'priority_1': 3,
+        'priority_2': 2,
+        'priority_3': 1
+    }
+
+    keywords_by_priority = {}
     for priority in ['priority_1', 'priority_2', 'priority_3']:
         if priority in config['keywords']:
-            keywords_by_priority.append({
-                'priority': priority,
-                'keywords': config['keywords'][priority]
-            })
+            keywords_by_priority[priority] = config['keywords'][priority]
 
     positions = await page.query_selector_all(".bg-white.hover\\:bg-gray-100")
-    matched_positions = []
+    position_scores = []
 
     print(f"  [디버그] 총 {len(positions)}개 직무 박스 발견")
 
@@ -176,21 +180,49 @@ async def find_matching_positions(page):
         if career_type not in allowed_career_types:
             continue
 
-        for prio_group in keywords_by_priority:
-            priority = prio_group['priority']
-            keywords = prio_group['keywords']
+        # 모든 우선순위의 키워드를 확인하여 점수 계산
+        total_score = 0
+        all_matched_keywords = []
 
+        for priority, keywords in keywords_by_priority.items():
             # 대소문자 구분 없이 키워드 매칭
             matched_keywords = [kw for kw in keywords if kw.lower() in keywords_text.lower()]
             if matched_keywords:
-                matched_positions.append({
-                    'position_name': position_name,
-                    'career_type': career_type,
-                    'keywords': keywords_text,
-                    'matched_keywords': matched_keywords,
-                    'priority': priority
-                })
-                break
+                score = priority_scores[priority] * len(matched_keywords)
+                total_score += score
+                all_matched_keywords.extend([(kw, priority) for kw in matched_keywords])
+
+        # 매칭된 키워드가 있으면 점수와 함께 저장
+        if total_score > 0:
+            position_scores.append({
+                'position_name': position_name,
+                'career_type': career_type,
+                'keywords': keywords_text,
+                'matched_keywords': all_matched_keywords,
+                'score': total_score
+            })
+            print(f"  [디버그] 직무 '{position_name}' 점수: {total_score}점")
+
+    # 점수가 높은 순으로 정렬
+    position_scores.sort(key=lambda x: x['score'], reverse=True)
+
+    # 점수 기반으로 정렬된 결과를 반환 (기존 형식 유지)
+    matched_positions = []
+    for pos_data in position_scores:
+        # priority는 가장 높은 우선순위 키워드의 priority로 설정
+        highest_priority = min([p for _, p in pos_data['matched_keywords']],
+                              key=lambda p: int(p.split('_')[1]))
+        matched_positions.append({
+            'position_name': pos_data['position_name'],
+            'career_type': pos_data['career_type'],
+            'keywords': pos_data['keywords'],
+            'matched_keywords': [kw for kw, _ in pos_data['matched_keywords']],
+            'priority': highest_priority,
+            'score': pos_data['score']
+        })
+
+    if matched_positions:
+        print(f"  [최종] 최고 점수 직무: '{matched_positions[0]['position_name']}' ({matched_positions[0]['score']}점)")
 
     return matched_positions
 

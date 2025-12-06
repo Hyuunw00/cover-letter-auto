@@ -25,34 +25,18 @@ keywords:
     - Back-end
     - BE
     - 백엔드
-    - SW
-    - S/W
-    - 소프트웨어
-
-  # 3순위 - 기타 기술 스택
-  priority_3:
-    # React 관련
-    - React
-    - 리액트
-    - ReactJS
-
-    # Vue 관련
-    - Vue
-    - 뷰
-    - VueJS
-
-    # JavaScript 관련
-    - JavaScript
-    - 자바스크립트
-    - JS
-    - TypeScript
-    - 타입스크립트
-    - TS
 
     # 웹 개발 관련
     - Web
     - 웹개발
     - 웹
+
+  # 3순위 - 기타 기술 스택
+  priority_3:
+    # 소프트웨어 관련
+    - SW
+    - S/W
+    - 소프트웨어
 
     # 전산 관련
     - 전산
@@ -60,3 +44,8 @@ keywords:
     # 앱 개발 관련
     - App
     - 앱
+
+    # 기타 키워드
+    - DevOps
+    - 인프라
+    - AI
